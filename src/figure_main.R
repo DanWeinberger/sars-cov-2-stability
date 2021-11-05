@@ -7,27 +7,6 @@
 ## half-life posterior distributions
 #######################################
 
-script_packages <- c(
-    'rstan',      # stan interface
-    'readr',      # csv read-in
-    'magrittr',   # for pipe operator %>%
-    'dplyr',      # for filter()
-    'tidybayes',  # for for spread_draws(), etc.
-    'ggplot2',    # for plotting
-    'modelr',     # for data_grid()
-    'tidyr',      # for crossing()
-    'cowplot',    # publication ready ggplot
-    'scales',     # for trans_breaks(), etc.
-    'forcats'    # for fct_relevel()
-)   
-
-## load in packages without messages
-for (package in script_packages){
-    suppressPackageStartupMessages(
-        library(package,
-                character.only=TRUE))
-}
-
 
 #################################
 # read in needed data

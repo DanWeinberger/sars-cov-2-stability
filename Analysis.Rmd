@@ -1,0 +1,59 @@
+---
+title: "analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+source('./src/install_needed_packages.R')
+
+pack.ls <- c('rstan','parallel','readr','magrittr','dplyr','tidybayes','ggplot2', 'modelr','tidyr','forcats','cowplot','bayesplot','huxtable','officer','flextable')
+
+## load in packages without messages
+for (package in pack.ls){
+    suppressPackageStartupMessages(
+        library(package,
+                character.only=TRUE))
+}
+```
+
+```{r}
+dat <- read.csv('./dat/cleaned/titer_data.csv')
+```
+
+Fit the model
+```{r}
+
+source('./src/fit_stan_model.R')
+model_src_path <- './src/titer_decay_model.stan'
+  
+fit <- stan(
+    model_src_path,
+    data = stan_data,
+    iter = niter,
+    seed = fixed_seed,
+    chains = nchains,
+    init = init_val,
+    control = list(max_treedepth = max_tree,
+                   adapt_delta = adapt_d))
+
+cat('\nsaving mcmc samples to', mcmc_output_path, '\n')
+
+saveRDS(fit, './out/mcmc_fit.rds')
+
+```
+
+Chain diagnostics
+
+```{r}
+
+source('./src/chain_diagnostics.R')
+
+```
+
+
+

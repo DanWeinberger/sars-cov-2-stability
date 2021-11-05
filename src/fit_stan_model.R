@@ -1,5 +1,3 @@
-#!/usr/bin/env Rscript
-
 ###################################
 ## fit the specified stan model
 ## to the specified clean dataset,
@@ -7,15 +5,6 @@
 ## file
 ##
 ####################################
-
-script_packages <- c(
-    'rstan',     # stan interface
-    'parallel',  # parallelized MCMC
-    'readr',     # csv read-in
-    'magrittr',  # for pipe operator %>%
-    'dplyr',     # for filter()
-    'tidyr'      # for drop_na()
-)
 
 
 ## set up hyperparameters for models
@@ -41,13 +30,6 @@ hyperparam_list <- list(
     debug = debug)
 
 
-## load in packages without messages
-for (package in script_packages){
-    suppressPackageStartupMessages(
-        library(package,
-                character.only=TRUE))
-}
-
 
 ## read command line args
 args <- commandArgs(trailingOnly=TRUE)
@@ -55,13 +37,6 @@ model_src_path <- args[1]
 titer_data_path <- args[2]
 mcmc_output_path <- args[3]
 
-
-## read data
-cat('reading in titer data from file ', titer_data_path, ' ...\n')
-dat <- read_csv(titer_data_path,
-                     col_types = cols())
-
-cat('data loaded successfully!\n')
 
 ## set stan options
 n_cores <- parallel::detectCores()
@@ -138,23 +113,5 @@ stan_data <- c(
     hyperparam_list)
 
 
-###############################
-## Compile, fit, and save model
-###############################
-cat(paste0("fitting stan model (may need time to ",
-           "compile if not already compiled)...\n"))
-fit <- stan(
-    model_src_path,
-    data = stan_data,
-    iter = niter,
-    seed = fixed_seed,
-    chains = nchains,
-    init = init_val,
-    control = list(max_treedepth = max_tree,
-                   adapt_delta = adapt_d))
 
-cat('\nsaving mcmc samples to', mcmc_output_path, '\n')
 
-saveRDS(fit, mcmc_output_path)
-
-warnings()

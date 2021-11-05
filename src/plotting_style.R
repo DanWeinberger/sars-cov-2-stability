@@ -4,19 +4,6 @@
 ## shared styling for all plots
 ##
 ####################################
-script_packages <- c("ggplot2",    # for theme_set()
-                     "scales",     # for scientific_format()
-                     "readr",      # for read_csv()
-                     "cowplot"     # for background_grid()
-                     ) 
-
-
-## load in packages without messages
-for (package in script_packages){
-    suppressPackageStartupMessages(
-        library(package,
-                character.only=TRUE))
-}
 
 ## styling for text
 hcov_name <- "HCoV-19"
@@ -136,4 +123,3 @@ jitwid <- 0.25
 jith <- 0.0
 
 
-cat("Loaded plotting style successfully!\n")
