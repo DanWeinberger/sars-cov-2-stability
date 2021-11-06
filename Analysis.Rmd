@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 source('./src/install_needed_packages.R')
 
-pack.ls <- c('rstan','parallel','readr','magrittr','dplyr','tidybayes','ggplot2', 'modelr','tidyr','forcats','cowplot','bayesplot','huxtable','officer','flextable')
+pack.ls <- c('rstan','parallel','readr','magrittr','dplyr','tidybayes','ggplot2', 'modelr','tidyr','forcats','cowplot','bayesplot','huxtable','officer','flextable', 'lme4')
 
 ## load in packages without messages
 for (package in pack.ls){
@@ -54,6 +54,41 @@ Chain diagnostics
 source('./src/chain_diagnostics.R')
 
 ```
+Plotting
+```{r}
+source('./src/plotting_style.R')
+```
+
+Test out some different approach
+
+```{r}
+d1 <- dat[dat$virus=='HCoV-19',]
+
+d1$titer <- 10^d1$log10_titer
+
+d1 <- d1 %>%
+  group_by(material, humidity, temperature, replicate) %>%
+  mutate(unique_replicate= cur_group_id())
+
+mod1 <- lmer(log10_titer ~ 0 +material + time + material*time +  (time|unique_replicate), data=d1)
+
+ 
+log10_conc_t = log10_conc_0 - lambda*t
+t = (log10_conc_t - log10_conc_0)/lambda
+
+
+#log10((10^log10_conc_0)/2) = log10_conc_0 - lambda*t
+#t_half=  (log10_conc_0 -log10((10^log10_conc_0)/2) )/lambda
+
+t_half_aero <- (2.7 - log10((10^2.7)/2 ))/0.244
+t_half_card <- (1.9 - log10((10^1.9)/2 ))/(0.2444-0.2327)
+
+
+
+ summary(lm(log10_titer ~ 0 +material + time + material*time, data=d1))
+
+```
+
 
 
 
