@@ -62,7 +62,7 @@ source('./src/plotting_style.R')
 Test out some different approach
 
 ```{r}
-d1 <- dat[dat$virus=='HCoV-19',]
+d1 <- dat[dat$virus=='HCoV-19' & dat$log10_titer>dat$detection_limit_log10_titer,] #SARS-CoV2 and exclude negative
 
 d1$titer <- 10^d1$log10_titer
 
@@ -73,15 +73,13 @@ d1 <- d1 %>%
 mod1 <- lmer(log10_titer ~ 0 +material + time + material*time +  (time|unique_replicate), data=d1)
 
  
-log10_conc_t = log10_conc_0 - lambda*t
-t = (log10_conc_t - log10_conc_0)/lambda
-
-
 #log10((10^log10_conc_0)/2) = log10_conc_0 - lambda*t
 #t_half=  (log10_conc_0 -log10((10^log10_conc_0)/2) )/lambda
 
-t_half_aero <- (2.7 - log10((10^2.7)/2 ))/0.244
-t_half_card <- (1.9 - log10((10^1.9)/2 ))/(0.2444-0.2327)
+t_half_aero <- (2.7 - log10((10^2.7)/2 ))/0.24425
+t_half_card <- (2.54 - log10((10^2.54)/2 ))/(0.24425-0.177331)
+t_half_copper <- (3.05 - log10((10^3.05)/2 ))/(0.2444- -0.04557)
+t_half_steel <- (2.09 - log10((10^2.09)/2 ))/(0.2444-0.2393)
 
 
 
