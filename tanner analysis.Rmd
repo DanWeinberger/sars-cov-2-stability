@@ -50,7 +50,7 @@ a1$`dil-4`[is.na(a1$`dil-4`) & !is.na(a1$`dil-3`) ] <- 0
 
 
 ```{r}
-a1.m <- melt (a1, id.vars=c('temp','time', 'humidity','surface','replicate','variant','date')) %>%
+a1.ma <- melt (a1, id.vars=c('temp','time', 'humidity','surface','replicate','variant','date')) %>%
   filter(variable != 'Time point (post inoculation)') %>%
   mutate(variable= as.character(variable), 
            dilution=as.numeric(gsub("dil",'', variable) )) %>%
@@ -61,9 +61,24 @@ a1.m <- melt (a1, id.vars=c('temp','time', 'humidity','surface','replicate','var
          wgt = countable*10^dilution/sum(countable*10^dilution)  ) %>%
   summarize( concentration=sum(concentration*wgt, na.rm=T)) %>%
  mutate(concentration= if_else(concentration==0, 0.5,concentration), unique_replicate= cur_group_id(),log10_titer=log10(concentration), humidity=as.factor(humidity)) %>%
-    group_by(temp, time, humidity, surface, variant, date, replicate) %>%
+    group_by(temp, time, humidity, surface, variant, date) %>%
+   mutate(max_conc_condition=max(concentration, na.rm=T)) %>%
   ungroup()
 
+#once sample is negative, stop tracking it
+censor_time <- a1.ma %>%
+  group_by(temp, time, humidity, surface, variant, date)%>%
+  summarize(max_conc_condition=mean(max_conc_condition)) %>%
+  ungroup() %>%
+    arrange(temp,  humidity, surface, variant, date, time) %>%
+    group_by(temp,  humidity, surface, variant) %>%
+  mutate(lag_conc=lag(max_conc_condition,1), CENSOR=if_else(lag_conc==0.5,1, 0) ) %>%
+  select(temp,  humidity, surface, variant, time,CENSOR)
+
+a1.m <- merge(a1.ma, censor_time, by=c('temp',  'humidity', 'surface', 'variant', 'time')) %>%
+  filter(is.na(CENSOR) | CENSOR ==0 )
+
+  
 
 ```
 
@@ -92,11 +107,11 @@ mod1 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + surface*time, 
 
 summary(mod1)
 
-t_half_alum <- (3.47 - log10((10^3.47)/2 ))/0.016231
+t_half_alum <- (3.60 - log10((10^3.60)/2 ))/0.017361
 
-t_half_ss <- (3.31 - log10((10^3.31)/2 ))/(0.016231- 0.001577)
+t_half_ss <- (3.49 - log10((10^3.49)/2 ))/(0.017361- 0.007243 )
 
-t_half_plastic <- (3.70 - log10((10^3.70)/2 ))/(0.016231- 0.004454)
+t_half_plastic <- (3.70 - log10((10^3.70)/2 ))/(0.017361- 0.004710 )
 
 t_half_alum
 t_half_ss
@@ -123,9 +138,9 @@ mod3 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + time*humidity,
 summary(mod3)
 
 #half life for aluminim, 30% humidity, Alpha
-t_half_30 <- (3.71 - log10((10^3.71)/2 ))/0.0177979
+t_half_30 <- (3.73 - log10((10^3.73)/2 ))/0.0184079  
 
-t_half_60 <- ((3.71+0.46) - log10((10^(3.71+0.46))/2 ))/(0.0177979+0.0984324)
+t_half_60 <- ((3.71+0.4514750) - log10((10^(3.73+0.4514750))/2 ))/(0.0184079+0.0982021)
 
 t_half_30
 t_half_60
