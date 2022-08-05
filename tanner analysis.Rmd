@@ -1,0 +1,189 @@
+---
+title: "Tanner analysis"
+output: html_notebook
+---
+
+
+```{r setup}
+library(dplyr)
+library(readxl)
+library(reshape2)
+library(lme4)
+library(ggplot2)
+```
+
+The goal for this analysis is to evaluate survival of SARS-CoV-2 on different surfaces. We have experimental data, in triplicate, for different variants, humidity levels, and surfaces. The relevant baseline period is '0 hours dry'. Note that replicates are not longitundinal (i.e., replate 1B is not from same tile as 2B), so they should be treated independently.
+
+```{r, echo=F}
+
+sheets <- c('4-5-22 experiments', '4-27-22 experiments', '5-3-22 experiments', '6-7-22 experiments', '6-15-22 experiments', '6-22-22 experiments' )
+
+a1a <- lapply(sheets, function(x) read_excel('./dat/CONFIDENTIAL/20220803_Surface_Infectivity_Decay_study.xlsx', sheet=x) )
+
+a1 <- a1a %>%
+  bind_rows() %>%
+  filter(`Time point (post inoculation)` != "0 hours wet") %>%
+  mutate(time = gsub('hours', '',`Time point (post inoculation)`),
+         time = as.numeric(gsub('dry', '',time ))) %>%
+  rename(replicate=`Replicate number`,
+         surface='Surface material',  
+         humidity='Humidity level',
+         temp='Temperature'
+         )
+
+a1$humidity[a1$humidity==60] <- 0.6
+
+names(a1) <- gsub("Cell culture plaque count 10\\^",'dil', names(a1))
+
+write.csv(a1, './dat/CONFIDENTIAL/cleaned.csv')
+
+```
+
+Fill 0s for more dilute if less dilute had virus
+```{r}
+
+a1$`dil-2`[is.na(a1$`dil-2`) & !is.na(a1$`dil-1`) ] <- 0
+a1$`dil-3`[is.na(a1$`dil-3`) & !is.na(a1$`dil-2`) ] <- 0
+a1$`dil-4`[is.na(a1$`dil-4`) & !is.na(a1$`dil-3`) ] <- 0
+
+```
+
+
+```{r}
+a1.m <- melt (a1, id.vars=c('temp','time', 'humidity','surface','replicate','variant','date')) %>%
+  filter(variable != 'Time point (post inoculation)') %>%
+  mutate(variable= as.character(variable), 
+           dilution=as.numeric(gsub("dil",'', variable) )) %>%
+  arrange(temp, time, humidity, surface, replicate, variant, date,desc(dilution)) %>%
+  group_by(temp, time, humidity, surface, variant, date, replicate) %>%
+  mutate(value= as.numeric(as.character(value)), concentration= value/10^dilution, 
+         countable= !is.na(value), 
+         wgt = countable*10^dilution/sum(countable*10^dilution)  ) %>%
+  summarize( concentration=sum(concentration*wgt, na.rm=T)) %>%
+ mutate(concentration= if_else(concentration==0, 0.5,concentration), unique_replicate= cur_group_id(),log10_titer=log10(concentration), humidity=as.factor(humidity)) %>%
+    group_by(temp, time, humidity, surface, variant, date, replicate) %>%
+  ungroup()
+
+
+```
+
+Some descriptive plots
+```{r, fig.width=4,fig.height=4}
+
+ggplot(a1.m, aes(x=time, y=log10_titer, group=humidity, col=humidity ) ) +
+  geom_point()+
+  theme_classic() +
+  facet_wrap(variant~surface)+
+  geom_hline(yintercept=log10(0.5),lty=2, col='grey') 
+```
+
+```{r}
+ggplot(a1.m, aes(x=time, y=log10_titer, group=variant, col=variant ) ) +
+  geom_point()+
+  theme_classic() +
+  facet_wrap(~surface)
+```
+
+Half life for plastic, steel not significantly different than aluminum
+
+```{r}
+
+mod1 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + surface*time, data=a1.m[a1.m$concentration>0.5,])  #+ (time|unique_replicate), data=a1.m)
+
+summary(mod1)
+
+t_half_alum <- (3.47 - log10((10^3.47)/2 ))/0.016231
+
+t_half_ss <- (3.31 - log10((10^3.31)/2 ))/(0.016231- 0.001577)
+
+t_half_plastic <- (3.70 - log10((10^3.70)/2 ))/(0.016231- 0.004454)
+
+t_half_alum
+t_half_ss
+t_half_plastic
+
+```
+
+
+or by variant
+```{r}
+
+mod2 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + time*variant, data=a1.m[a1.m$concentration>0.5,])  #+ (time|unique_replicate), data=a1.m)
+
+summary(mod2)
+
+
+```
+
+But decay is significantly faster at 60% humidity vs 30% humidity (17 vs 3 days)
+```{r}
+
+mod3 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + time*humidity, data=a1.m[a1.m$concentration>0.5,])  #+ (time|unique_replicate), data=a1.m)
+
+summary(mod3)
+
+#half life for aluminim, 30% humidity, Alpha
+t_half_30 <- (3.71 - log10((10^3.71)/2 ))/0.0177979
+
+t_half_60 <- ((3.71+0.46) - log10((10^(3.71+0.46))/2 ))/(0.0177979+0.0984324)
+
+t_half_30
+t_half_60
+```
+
+
+
+
+
+
+## Side note: Exploring stats to combine  dilutions
+
+Conclusion, take a weighted average of the concentrations, with the weight being proportional to the dilution. This is equivalent to the MLE estimate
+
+```{r}
+test <- c(4,5,60, 600)
+
+```
+
+without an offset, the max likelihood estimate is just the sample mean of the counts
+
+```{r}
+
+offset3 <- c(1,1,1,1)
+mod3 <- glm(test ~ 1, family='poisson', offset=log(offset3))
+
+exp(mod3$coefficients)
+
+mean(test)
+```
+
+With an offset, the mean is the weighted mean of the rate is equal to the weighted average of the rate
+
+```{r}
+offset1 <- c(1,1,10,100)
+
+mod1 <- glm(test ~ 1, family='poisson', offset=log(offset1))
+
+exp(mod1$coefficients)
+
+sum(test/offset1*offset1/sum(offset1)) #average, weighted by offset
+```
+
+ditto
+```{r}
+
+offset2 <- c(100,100,10,1)
+
+df.test2 <- cbind.data.frame('y'=test, 'log_offset'=log(offset2))
+
+mod2 <- glm(y ~ 1, family='poisson', offset=log_offset, data=df.test2)
+
+exp(mod2$coefficients)
+
+sum(test/offset2*offset2/sum(offset2))
+
+
+```
+
+
+

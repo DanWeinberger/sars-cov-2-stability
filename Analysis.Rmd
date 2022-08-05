@@ -77,6 +77,7 @@ mod1 <- lmer(log10_titer ~ 0 +material + time + material*time +  (time|unique_re
 #t_half=  (log10_conc_0 -log10((10^log10_conc_0)/2) )/lambda
 
 t_half_aero <- (2.7 - log10((10^2.7)/2 ))/0.24425
+
 t_half_card <- (2.54 - log10((10^2.54)/2 ))/(0.24425-0.177331)
 t_half_copper <- (3.05 - log10((10^3.05)/2 ))/(0.2444- -0.04557)
 t_half_steel <- (2.09 - log10((10^2.09)/2 ))/(0.2444-0.2393)
