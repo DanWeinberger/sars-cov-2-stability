@@ -8,6 +8,7 @@ output: html_notebook
 library(dplyr)
 library(readxl)
 library(reshape2)
+library(MASS)
 library(lme4)
 library(ggplot2)
 ```
@@ -160,6 +161,29 @@ t_half_60 <- ((3.63) - log10((10^(3.63))/2 ))/(0.016303+0.085415)
 t_half_30
 t_half_60
 ```
+
+## resampling to get uncertainty intervals
+```{r}
+
+mod3 <- lm(log10_titer ~ 0 + time + humidity +  time*humidity, data=a1.m[a1.m$concentration>0.5,])  #+ (time|unique_replicate), data=a1.m)
+
+  pred.coefs.reg.mean <-
+    mvrnorm(n = 10000,
+            mu = mod3$coefficients,
+            Sigma = vcov(mod3))
+  
+  
+t_half_30 <- (pred.coefs.reg.mean[,'humidity0.3'] - log10((10^pred.coefs.reg.mean[,'humidity0.3'])/2 ))/(-1*pred.coefs.reg.mean[,'time'] )   
+
+t_half_60 <- (pred.coefs.reg.mean[,'humidity0.6'] - log10((10^pred.coefs.reg.mean[,'humidity0.6'])/2 ))/(-1*(pred.coefs.reg.mean[,'time']+
+                                                                                                             pred.coefs.reg.mean[,'time:humidity0.6'] ) )   
+
+t_half_30_q <- quantile(t_half_30, probs=c(0.5, 0.025, 0.975))
+
+t_half_60_q <- quantile(t_half_60, probs=c(0.5, 0.025, 0.975))
+
+t_half_30_q
+t_half_60_q
 ```
 
 
