@@ -145,6 +145,23 @@ t_half_60 <- ((3.71+0.4514750) - log10((10^(3.73+0.4514750))/2 ))/(0.0184079+0.0
 t_half_30
 t_half_60
 ```
+Just confirm using model with only time and humidity
+```{r}
+
+mod3 <- lm(log10_titer ~ 0 + time + humidity +  time*humidity, data=a1.m[a1.m$concentration>0.5,])  #+ (time|unique_replicate), data=a1.m)
+
+summary(mod3)
+
+#half life for aluminim, 30% humidity, Alpha
+t_half_30 <- (3.20 - log10((10^3.20)/2 ))/0.016303    
+
+t_half_60 <- ((3.63) - log10((10^(3.63))/2 ))/(0.016303+0.085415)
+
+t_half_30
+t_half_60
+```
+```
+
 
 
 
