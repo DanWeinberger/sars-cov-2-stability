@@ -3,6 +3,7 @@ title: "Tanner analysis"
 output: html_notebook
 ---
 
+TODO: censoring analysis (set first negative point as censor date)
 
 ```{r setup}
 library(dplyr)
@@ -109,7 +110,8 @@ Some descriptive plots
 
 ggplot(a1.m, aes(x=time, y=log10_titer, group=humidity, col=humidity ) ) +
   geom_point()+
-  theme_classic() +
+  theme_classic() + 
+  geom_vline(xintercept=c(23.7,8.0), col='gray', lty=3) +
   facet_wrap(variant~surface)+
   geom_hline(yintercept=log10(999e-10),lty=2, col='grey') 
 ```
@@ -125,7 +127,7 @@ Half life for plastic, steel not significantly different than aluminum
 
 ```{r}
 
-mod1 <- lm(log10_titer ~ 0 +surface + time + humidity + variant + humidity*time +surface*time, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
+mod1 <- lm(log10_titer ~ 1 +surface + time + humidity + variant + humidity*time +surface*time, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
 
 summary(mod1)
 
@@ -160,7 +162,7 @@ t_half_plastic30
 WA01 slower than alpha and delta.
 ```{r}
 
-mod2 <- lm(log10_titer ~ 1 + time + humidity + surface + variant + time*surface + time*humidity + time*variant +time*humidity*variant*surface, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
+mod2 <- lm(log10_titer ~ 1 + time + humidity + surface + variant + time*surface + time*humidity*variant + time*surface, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
 
 summary(mod2)
 
@@ -217,7 +219,7 @@ t_half_60
 
 ```{r}
 
-mod3 <- lm(log10_titer ~ 0 + time + humidity +  time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
+mod3 <- lm(log10_titer ~ 0 + time + humidity + surface + variant+ time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
 
   pred.coefs.reg.mean <-
     mvrnorm(n = 10000,
@@ -228,6 +230,29 @@ mod3 <- lm(log10_titer ~ 0 + time + humidity +  time*humidity, data=a1.m)  #+ (t
 t_half_30 <- log10(0.5)/(pred.coefs.reg.mean[,'time'])
 
 t_half_60 <- log10(0.5)/(pred.coefs.reg.mean[,'time']  + pred.coefs.reg.mean[,'time:humidity0.6'])
+
+t_half_30_q <- quantile(t_half_30, probs=c(0.5, 0.025, 0.975))
+
+t_half_60_q <- quantile(t_half_60, probs=c(0.5, 0.025, 0.975))
+
+t_half_30_q
+t_half_60_q
+```
+
+Allowing interactions:
+```{r}
+
+mod4 <- lm(log10_titer ~ 0 + time + humidity + surface + variant+ time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
+
+  pred.coefs.reg.mean4 <-
+    mvrnorm(n = 10000,
+            mu = mod3$coefficients,
+            Sigma = vcov(mod3))
+  
+  
+t_half_30 <- log10(0.5)/(pred.coefs.reg.mean4[,'time'])
+
+t_half_60 <- log10(0.5)/(pred.coefs.reg.mean4[,'time']  + pred.coefs.reg.mean4[,'time:humidity0.6'])
 
 t_half_30_q <- quantile(t_half_30, probs=c(0.5, 0.025, 0.975))
 
