@@ -1,22 +1,29 @@
 ---
-title: "Tanner analysis"
-output: html_notebook
+title: "Analysis of SARS-CoV-2 Survival Times"
+output: html_document
 ---
 
-TODO: censoring analysis (set first negative point as censor date)
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
 
-```{r setup}
-library(dplyr)
+library(dplyr, warn.conflicts = FALSE)
+options(dplyr.summarise.inform = FALSE)
+
 library(readxl)
 library(reshape2)
 library(MASS)
 library(lme4)
 library(ggplot2)
+library(icenReg)
+library(htmlTable)
+
 ```
+
+## Introduction 
 
 The goal for this analysis is to evaluate survival of SARS-CoV-2 on different surfaces. We have experimental data, in triplicate, for different variants, humidity levels, and surfaces. The relevant baseline period is '0 hours dry'. Note that replicates are not longitundinal (i.e., replate 1B is not from same tile as 2B), so they should be treated independently.
 
-```{r, echo=F}
+```{r, echo=F,warning=F,message=F}
 
 sheets <- c('4-5-22 experiments', '4-27-22 experiments', '5-3-22 experiments', '6-7-22 experiments', '6-15-22 experiments', '6-22-22 experiments','8-3-22 experiments','8-16-22 experiments','8-30-22 experiments' )
 
@@ -50,21 +57,20 @@ a1$humidity[a1$humidity==60] <- 0.6
 
 names(a1) <- gsub("Cell culture plaque count 10\\^",'dil', names(a1))
 
-write.csv(a1, './dat/CONFIDENTIAL/cleaned.csv')
-
-```
-
-Fill 0s for more dilute if less dilute had virus
-```{r}
+#Fill 0s for more dilute if less dilute had virus
 
 a1$dil_2[is.na(a1$dil_2) & !is.na(a1$dil_1) ] <- 0
 a1$dil_3[is.na(a1$dil_3) & !is.na(a1$dil_2) ] <- 0
 a1$dil_4[is.na(a1$dil_4) & !is.na(a1$dil_3) ] <- 0
 
+write.csv(a1, './dat/CONFIDENTIAL/cleaned.csv')
+
+
+
 ```
 
 
-```{r}
+```{r, warning=F,message=F}
 a1.ma <- melt (a1, id.vars=c('temp','time', 'humidity','surface','replicate','variant','date')) %>%
   filter(variable != 'Time point (post inoculation)') %>%
   mutate(variable= as.character(variable), 
@@ -106,7 +112,7 @@ a1.m <- merge(a1.ma, censor_time, by=c('temp',  'humidity', 'surface', 'variant'
 
 ```
 
-Some descriptive plots
+
 ```{r, fig.width=6,fig.height=6}
 
 ggplot(a1.m, aes(x=time, y=log10_titer, group=humidity, col=humidity ) ) +
@@ -114,15 +120,19 @@ ggplot(a1.m, aes(x=time, y=log10_titer, group=humidity, col=humidity ) ) +
   theme_classic() + 
   geom_vline(xintercept=c(23.7,8.0), col='gray', lty=3) +
   facet_wrap(variant~surface)+
-  geom_hline(yintercept=log10(999e-10),lty=2, col='grey') 
+  geom_hline(yintercept=log10(999e-10),lty=2, col='grey') +
+  ggtitle('Concentration over time by variant, surface, and humidity')
 ```
 
 ```{r}
 ggplot(a1.m, aes(x=time, y=log10_titer, group=variant, col=variant ) ) +
   geom_point()+
   theme_classic() +
-  facet_wrap(~surface)
+  facet_wrap(humidity~surface) +
+    ggtitle('Concentration over time by humidity, surface,variant')
+
 ```
+## Regression models
 
 Half life for plastic, steel not significantly different than aluminum
 
@@ -130,94 +140,80 @@ Half life for plastic, steel not significantly different than aluminum
 
 mod1 <- lm(log10_titer ~ 1 +surface + time + humidity + variant + humidity*time +surface*time, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
 
-summary(mod1)
+#summary(mod1)
 
-coefs1 <- coef(mod1)
+
+  pred.coefs.reg.mean1 <-
+    mvrnorm(n = 10000,
+            mu = mod1$coefficients,
+            Sigma = vcov(mod1))
+  
 
 #t_half_alum <- (coefs1['surfaceAluminum'] - log10((10^coefs1['surfaceAluminum'])/2 ))/(-1*(coefs1['time']))
 #for 30 percnt humidity
-t_half_alum30 = log10(0.5)/(coefs1['time'])
+t_half_alum30 = log10(0.5)/(pred.coefs.reg.mean1[,'time'])
 
-t_half_ss30 = log10(0.5)/(coefs1['time'] + coefs1['surfaceStainless steel:time'])
+t_half_ss30 = log10(0.5)/(pred.coefs.reg.mean1[,'time'] + pred.coefs.reg.mean1[,'surfaceStainless steel:time'])
 
-t_half_plastic30 = log10(0.5)/(coefs1['time'] + coefs1['surfaceTextured plastic:time'])
-
-#t_half_ss <- (coefs1['surfaceStainless steel'] - log10((10^coefs1['surfaceStainless steel'])/2 ))/(-1*(coefs1['time'] +coefs1['surfaceStainless steel:time']  ))
-
-#t_half_ss = log10(0.5)/(coefs1['time'] + coefs1['surfaceStainless steel:time'])
+t_half_plastic30 = log10(0.5)/(pred.coefs.reg.mean1[,'time'] + pred.coefs.reg.mean1[,'surfaceTextured plastic:time'])
 
 
-#t_half_ss <- (3.49 - log10((10^3.49)/2 ))/(0.017361- 0.007243 )
+t_half_alum30.q <- round(quantile(t_half_alum30, probs=c(0.5, 0.025, 0.975)),0)
+t_half_ss30.q <- round(quantile(t_half_ss30, probs=c(0.5, 0.025, 0.975)),0)
+t_half_plastic30.q <- round( quantile(t_half_plastic30, probs=c(0.5, 0.025, 0.975)),0)
 
-#t_half_plastic <- (3.70 - log10((10^3.70)/2 ))/(0.017361- 0.004710 )
+combined_surface <- bind_rows(t_half_alum30.q,t_half_ss30.q,t_half_plastic30.q) %>%
+  mutate(HalfLife = paste0(`50%`, ' (95%CI:',`2.5%`, ', ', `97.5%` ,')' ), surface=c('Aluminum','Stainless Steel', 'Plastic') ) %>%
+  dplyr::select(surface, HalfLife)
 
 
-
-t_half_alum30
-t_half_ss30
-t_half_plastic30
-
+combined_surface
 ```
 
 
-WA01 slower than alpha and delta.
+Differences by variant not significant
+
 ```{r}
 
 mod2 <- lm(log10_titer ~ 1 + time + humidity + surface + variant + time*surface + time*humidity*variant + time*surface, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
 
-summary(mod2)
-
-coefs2 <- coef(mod2)
+  pred.coefs.reg.mean2 <-
+    mvrnorm(n = 10000,
+            mu = mod2$coefficients,
+            Sigma = vcov(mod2))
+  
+#summary(mod2)
 
 #t_half_alum <- (coefs1['surfaceAluminum'] - log10((10^coefs1['surfaceAluminum'])/2 ))/(-1*(coefs1['time']))
-t_half_alpha_30_al = log10(0.5)/(coefs2['time'])
-t_half_alpha_60_al = log10(0.5)/(coefs2['time'] + coefs2['time:humidity0.6'])
+t_half_alpha_30_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'])
+t_half_alpha_60_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'] + pred.coefs.reg.mean2[,'time:humidity0.6'])
 
-t_half_Delta30_al = log10(0.5)/(coefs2['time'] + coefs2['time:variantDelta'])
-t_half_Delta60_al = log10(0.5)/(coefs2['time'] + coefs2['time:variantDelta'] + coefs2['time:humidity0.6'] + coefs2['time:humidity0.6:variantDelta'])
+t_half_Delta30_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'] + pred.coefs.reg.mean2[,'time:variantDelta'])
+t_half_Delta60_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'] + pred.coefs.reg.mean2[,'time:variantDelta'] + pred.coefs.reg.mean2[,'time:humidity0.6'] + pred.coefs.reg.mean2[,'time:humidity0.6:variantDelta'])
+
+t_half_WA01_30_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'] + pred.coefs.reg.mean2[,'time:variantWA01'])
+t_half_WA01_60_al = log10(0.5)/(pred.coefs.reg.mean2[,'time'] + pred.coefs.reg.mean2[,'time:variantWA01'] + pred.coefs.reg.mean2[,'time:humidity0.6'] + pred.coefs.reg.mean2[,'time:humidity0.6:variantWA01'])
+
+t_half_alpha_30_al.q <- round(quantile(t_half_alpha_30_al, probs=c(0.5, 0.025, 0.975)),0)
+t_half_alpha_60_al.q <- round(quantile(t_half_alpha_60_al, probs=c(0.5, 0.025, 0.975)),0)
+
+t_half_Delta30_al.q <- round(quantile(t_half_Delta30_al, probs=c(0.5, 0.025, 0.975)),0)
+t_half_Delta60_al.q <- round(quantile(t_half_Delta60_al, probs=c(0.5, 0.025, 0.975)),0)
+
+t_half_WA01_30_al.q <- round(quantile(t_half_WA01_30_al, probs=c(0.5, 0.025, 0.975)),0)
+t_half_WA01_60_al.q <- round(quantile(t_half_WA01_60_al, probs=c(0.5, 0.025, 0.975)),0)
+
+combined_variant <- bind_rows(t_half_alpha_30_al.q,t_half_alpha_60_al.q,t_half_Delta30_al.q,t_half_Delta60_al.q,
+                              t_half_WA01_30_al.q, t_half_WA01_60_al.q) %>%
+  mutate(HalfLife = paste0(`50%`, ' (95%CI:',`2.5%`, ', ', `97.5%` ,')' ), variant=c('Alpha', 'Alpha', 'Delta','Delta', 'WA-01', 'Wa-01'), humidity= c(30,60,30,60,30,60) ) %>%
+  dplyr::select(variant, humidity, HalfLife)
 
 
-
-t_half_WA01_30_al = log10(0.5)/(coefs2['time'] + coefs2['time:variantWA01'])
-t_half_WA01_60_al = log10(0.5)/(coefs2['time'] + coefs2['time:variantWA01'] + coefs2['time:humidity0.6'] + coefs2['time:humidity0.6:variantWA01'])
-
-
-t_half_alpha_30_al
-t_half_alpha_60_al
-
-t_half_Delta30_al
-t_half_Delta60_al
-
-t_half_WA01_30_al
-t_half_WA01_60_al
+htmlTable(combined_variant)
 ```
 
- decay is significantly faster at 55-60% humidity vs 30% humidity (30h vs 10 h)
+ Decay is significantly faster at 55-60% humidity vs 30% humidity (30h vs 10 h)
  
-```{r}
-
-mod3 <- lm(log10_titer ~ 1 + time + humidity + variant + time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
-
-summary(mod3)
-
-coefs3 <- coef(mod3)
-
-#half life for 30% humidity, Alpha (averaged over surfaces)
-
-t_half_30 = log10(0.5)/(coefs2['time'])
-
-t_half_60 = log10(0.5)/(coefs3['time'] + coefs3['time:humidity0.6'])
-
-
-
-t_half_30
-t_half_60
-```
-
-
-
-## resampling to get uncertainty intervals
-
 ```{r}
 
 mod3 <- lm(log10_titer ~ 0 + time + humidity + surface + variant+ time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
@@ -232,43 +228,25 @@ t_half_30 <- log10(0.5)/(pred.coefs.reg.mean[,'time'])
 
 t_half_60 <- log10(0.5)/(pred.coefs.reg.mean[,'time']  + pred.coefs.reg.mean[,'time:humidity0.6'])
 
-t_half_30_q <- quantile(t_half_30, probs=c(0.5, 0.025, 0.975))
+t_half_30_q <- round(quantile(t_half_30, probs=c(0.5, 0.025, 0.975)))
 
-t_half_60_q <- quantile(t_half_60, probs=c(0.5, 0.025, 0.975))
+t_half_60_q <- round(quantile(t_half_60, probs=c(0.5, 0.025, 0.975)))
 
-t_half_30_q
-t_half_60_q
+
+
+combined_humidity <- bind_rows(t_half_30_q,t_half_60_q) %>%
+  mutate(HalfLife = paste0(`50%`, ' (95%CI:',`2.5%`, ', ', `97.5%` ,')' ), humidity= c(30,60) ) %>%
+  dplyr::select( humidity,HalfLife) 
+
+htmlTable(combined_humidity)
 ```
-
-Allowing interactions:
-```{r}
-
-mod4 <- lm(log10_titer ~ 0 + time + humidity + surface + variant+ time*humidity, data=a1.m)  #+ (time|unique_replicate), data=a1.m)
-
-  pred.coefs.reg.mean4 <-
-    mvrnorm(n = 10000,
-            mu = mod3$coefficients,
-            Sigma = vcov(mod3))
-  
-  
-t_half_30 <- log10(0.5)/(pred.coefs.reg.mean4[,'time'])
-
-t_half_60 <- log10(0.5)/(pred.coefs.reg.mean4[,'time']  + pred.coefs.reg.mean4[,'time:humidity0.6'])
-
-t_half_30_q <- quantile(t_half_30, probs=c(0.5, 0.025, 0.975))
-
-t_half_60_q <- quantile(t_half_60, probs=c(0.5, 0.025, 0.975))
-
-t_half_30_q
-t_half_60_q
-```
-
 
 
 ## Survival model
+
 Failure time is time of censoring
 
-```{r}
+```{r,results='hide'}
 censor_time2 <- censor_time %>%
   mutate(CENSOR= if_else(is.na(CENSOR),0,CENSOR)) %>%
   rename(time_L=time) %>%
@@ -278,11 +256,10 @@ censor_time2 <- censor_time %>%
   ungroup() %>%
   filter(CENSOR==1 | (CENSOR==0 & max_time==1))
 
-library(icenReg)
 
  np_fit = ic_np(cbind(time_R, time_L) ~ humidity, data = censor_time2)
 
- plot(np_fit) # Frommanual: "Looking at the plots, we can see a unique feature about the NPMLE for
+# plot(np_fit) # Frommanual: "Looking at the plots, we can see a unique feature about the NPMLE for
 #interval censored data. That is, there are two lines used to represent the survival
 #curve. This is because with interval censored data, the NPMLE is not always
 #unique; any curve that lies between the two lines has the same likelihood.""
@@ -290,6 +267,7 @@ library(icenReg)
  flatPrior_fit <- ic_bayes(cbind(time_R, time_L) ~ humidity, data = censor_time2, model = "po", dist = "gamma")
 
  flatPrior_fit
+ 
  plot(flatPrior_fit, newdata=censor_time2)
  
 ```
@@ -301,14 +279,14 @@ library(icenReg)
 
 Conclusion, take a weighted average of the concentrations, with the weight being proportional to the dilution. This is equivalent to the MLE estimate
 
-```{r}
+```{r, echo=T}
 test <- c(4,5,60, 600)
 
 ```
 
 without an offset, the max likelihood estimate is just the sample mean of the counts
 
-```{r}
+```{r, echo=T}
 
 offset3 <- c(1,1,1,1)
 mod3 <- glm(test ~ 1, family='poisson', offset=log(offset3))
@@ -320,7 +298,7 @@ mean(test)
 
 With an offset, the mean is the weighted mean of the rate is equal to the weighted average of the rate
 
-```{r}
+```{r, echo=T}
 offset1 <- c(1,1,10,100)
 
 mod1 <- glm(test ~ 1, family='poisson', offset=log(offset1))
@@ -331,7 +309,7 @@ sum(test/offset1*offset1/sum(offset1)) #average, weighted by offset
 ```
 
 ditto
-```{r}
+```{r, echo=T}
 
 offset2 <- c(100,100,10,1)
 
