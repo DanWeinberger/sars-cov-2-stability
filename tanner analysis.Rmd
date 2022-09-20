@@ -92,7 +92,8 @@ censor_time <- a1.ma %>%
   ungroup() %>%
     arrange(temp,  humidity, surface, variant, date, time) %>%
     group_by(temp,  humidity, surface, variant) %>%
-  mutate(lag_conc=lag(mean_conc_condition,1), CENSOR=if_else(lag_conc< 1e-7 ,1, 0) ) %>%
+  mutate(lag_conc=lag(mean_conc_condition,1), CENSOR=if_else(mean_conc_condition<1e-7 & lag_conc > 1e-7 ,1, 
+                                                              if_else(lag_conc < 1e-7, 2,0) ) ) %>%
   ungroup() %>%
   dplyr::select(temp,  humidity, surface, variant, time, CENSOR) 
 
@@ -267,6 +268,31 @@ t_half_60_q
 ## Survival model
 Failure time is time of censoring
 
+```{r}
+censor_time2 <- censor_time %>%
+  mutate(CENSOR= if_else(is.na(CENSOR),0,CENSOR)) %>%
+  rename(time_L=time) %>%
+  dplyr::arrange(temp,  humidity, surface, variant,  time_L) %>%
+      group_by(temp,  humidity, surface, variant) %>%
+  mutate(time_R=lag(time_L,1)  , max_time=(time_L==max(time_L))  ) %>%
+  ungroup() %>%
+  filter(CENSOR==1 | (CENSOR==0 & max_time==1))
+
+library(icenReg)
+
+ np_fit = ic_np(cbind(time_R, time_L) ~ humidity, data = censor_time2)
+
+ plot(np_fit) # Frommanual: "Looking at the plots, we can see a unique feature about the NPMLE for
+#interval censored data. That is, there are two lines used to represent the survival
+#curve. This is because with interval censored data, the NPMLE is not always
+#unique; any curve that lies between the two lines has the same likelihood.""
+ 
+ flatPrior_fit <- ic_bayes(cbind(time_R, time_L) ~ humidity, data = censor_time2, model = "po", dist = "gamma")
+
+ flatPrior_fit
+ plot(flatPrior_fit, newdata=censor_time2)
+ 
+```
 
 
 
